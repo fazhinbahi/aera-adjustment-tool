@@ -2,6 +2,8 @@ import streamlit as st
 import json
 import os
 import copy
+import zlib
+import base64
 from datetime import datetime
 import io
 import pandas as pd
@@ -241,7 +243,8 @@ def main():
     # ── Load product catalog ───────────────────────────────────────────────────
     if not st.session_state.data_loaded:
         if "catalog_json" in st.secrets:
-            st.session_state.skus_data = load_skus_data(json.loads(st.secrets["catalog_json"]))
+            raw = zlib.decompress(base64.b64decode(st.secrets["catalog_json"]))
+            st.session_state.skus_data = load_skus_data(json.loads(raw))
             st.session_state.data_loaded = True
         else:
             candidates = [f for f in os.listdir(".") if f.startswith("Adjustments_Forecast") and f.endswith(".json")]
