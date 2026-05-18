@@ -240,23 +240,27 @@ def main():
 
     # ── Load product catalog ───────────────────────────────────────────────────
     if not st.session_state.data_loaded:
-        candidates = [f for f in os.listdir(".") if f.startswith("Adjustments_Forecast") and f.endswith(".json")]
-        if candidates:
-            archivo = max(candidates, key=os.path.getmtime)
-            with open(archivo, "r", encoding="utf-8") as f:
-                st.session_state.skus_data = load_skus_data(json.load(f))
+        if "catalog_json" in st.secrets:
+            st.session_state.skus_data = load_skus_data(json.loads(st.secrets["catalog_json"]))
             st.session_state.data_loaded = True
-            st.caption(f"Catalog loaded from **{archivo}**")
         else:
-            st.warning("No product catalog found in the app directory.")
-            uploaded_catalog = st.file_uploader(
-                "Upload the Adjustments_Forecast JSON catalog file", type="json", key="catalog_upload"
-            )
-            if uploaded_catalog:
-                st.session_state.skus_data = load_skus_data(json.load(uploaded_catalog))
+            candidates = [f for f in os.listdir(".") if f.startswith("Adjustments_Forecast") and f.endswith(".json")]
+            if candidates:
+                archivo = max(candidates, key=os.path.getmtime)
+                with open(archivo, "r", encoding="utf-8") as f:
+                    st.session_state.skus_data = load_skus_data(json.load(f))
                 st.session_state.data_loaded = True
-                st.rerun()
-            st.stop()
+                st.caption(f"Catalog loaded from **{archivo}**")
+            else:
+                st.warning("No product catalog found. Please contact the administrator.")
+                uploaded_catalog = st.file_uploader(
+                    "Upload the Adjustments_Forecast JSON catalog file", type="json", key="catalog_upload"
+                )
+                if uploaded_catalog:
+                    st.session_state.skus_data = load_skus_data(json.load(uploaded_catalog))
+                    st.session_state.data_loaded = True
+                    st.rerun()
+                st.stop()
 
     skus_data: list[dict] = st.session_state.skus_data
 
