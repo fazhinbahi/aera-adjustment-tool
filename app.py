@@ -83,7 +83,9 @@ def build_excel_bytes(ajustes: list[dict]) -> bytes:
         "Area Manager", "Regional Director", "Demand Planner",
         "Full Product Path",
         "Category", "Brand", "Sub-brand", "Size", "SKU Number",
-        "Period", "Task", "Reason Code", "Current Value", "Date", "Comments",
+        "Period of Adjustment", "Task", "Reason Code",
+        "Comments", "Current Value", "Desired Value", "Delta",
+        "Date of tracking", "Source of the Adjustment", "Status in Aera",
     ]
 
     NAVY = "1F3864"; GREEN = "375623"; WHITE = "FFFFFF"
@@ -102,49 +104,91 @@ def build_excel_bytes(ajustes: list[dict]) -> bytes:
     ws.row_dimensions[1].height = 38
     for ci, h in enumerate(headers, 1):
         cell = ws.cell(1, ci, h)
-        if ci == 8:          hdr(cell, GREEN)
-        elif 9 <= ci <= 13:  hdr(cell, GOLD_HDR)
-        elif ci == 17:       hdr(cell, AMBER_H)
-        else:                hdr(cell, NAVY)
+        if ci == 8:              hdr(cell, GREEN)
+        elif 9 <= ci <= 13:      hdr(cell, GOLD_HDR)
+        elif 18 <= ci <= 20:     hdr(cell, AMBER_H)
+        else:                    hdr(cell, NAVY)
 
-    pf     = Font(name="Arial", size=10)
-    grn_f  = PatternFill("solid", fgColor=SOFT_GRN)
-    gld_f  = PatternFill("solid", fgColor=GOLD)
-    alt_f  = PatternFill("solid", fgColor="EBF0FA")
-    amb_f  = PatternFill("solid", fgColor=AMB_FILL)
+    pf    = Font(name="Arial", size=10)
+    grn_f = PatternFill("solid", fgColor=SOFT_GRN)
+    gld_f = PatternFill("solid", fgColor=GOLD)
+    alt_f = PatternFill("solid", fgColor="EBF0FA")
+    amb_f = PatternFill("solid", fgColor=AMB_FILL)
+    wht_f = PatternFill("solid", fgColor=WHITE)
+
+    CENTER_COLS = {1, 2, 3, 4, 14, 21}
 
     for ri, a in enumerate(ajustes, 2):
-        cat = a.get("Category", ""); brand = a.get("Brand", ""); sb = a.get("Sub-Brand", "")
-        vol = a.get("Volume", ""); sku = a.get("SKU", ""); cust = a.get("Customer", "All") or "All"
+        cat  = a.get("Category", ""); brand = a.get("Brand", ""); sb = a.get("Sub-Brand", "")
+        vol  = a.get("Volume", "");   sku   = a.get("SKU", "");   cust = a.get("Customer", "All") or "All"
         parts = [x for x in [cat, brand, sb] if x]
         if vol and vol != "N/A": parts.append(f"{vol}L")
         if sku: parts.append(sku)
         full = " > ".join(parts)
         size = f"{vol}L" if vol and vol != "N/A" else ""
 
+        # Period date
+        period_str = a.get("Period", "")
+        period_date = ""
+        if period_str:
+            try:
+                period_date = datetime.strptime(period_str, "%Y-%m-%d")
+            except Exception:
+                try:
+                    year = int(a.get("Cycle", "2026-01").split("-")[0])
+                    period_date = datetime(year, MESES.index(period_str) + 1, 1)
+                except Exception:
+                    period_date = period_str
+
+        # Current / Desired / Delta
+        curr_str = str(a.get("Current Value", "")).strip()
+        des_str  = str(a.get("Desired Value", "")).strip()
+        try:
+            curr_num = float(curr_str)
+            des_num  = float(des_str)
+            delta    = des_num - curr_num
+            curr_out = int(curr_num) if curr_num == int(curr_num) else curr_num
+            des_out  = int(des_num)  if des_num  == int(des_num)  else des_num
+        except Exception:
+            delta = ""; curr_out = curr_str; des_out = des_str
+
+        # Date of tracking
+        ts_str = a.get("Timestamp", "")
+        try:
+            date_track = datetime.strptime(ts_str[:10], "%Y-%m-%d")
+        except Exception:
+            date_track = ts_str[:10] if ts_str else ""
+
         row_data = [
             a.get("Cycle", ""), a.get("Sub-Segment", ""), a.get("Country", ""),
             cust, a.get("Area Manager", ""), a.get("Regional Director", ""),
             a.get("Demand Planner", ""), full,
             cat, brand, sb, size, sku,
-            datetime.now().strftime("%Y"),
+            period_date,
             a.get("Task", ""), a.get("Reason Code", ""),
-            a.get("Current Value", ""), a.get("Timestamp", "")[:10], a.get("Notes", ""),
+            a.get("Notes", ""), curr_out, des_out, delta,
+            date_track,
+            a.get("Source of the Adjustment", ""), "",
         ]
         is_alt = ri % 2 == 0
         for ci, val in enumerate(row_data, 1):
             cell = ws.cell(ri, ci, val)
             cell.font = pf
             cell.alignment = Alignment(
-                horizontal="center" if ci in (1, 2, 3, 4, 14, 18) else "left",
-                vertical="center", wrap_text=(ci in (8, 15, 19)),
+                horizontal="center" if ci in CENTER_COLS else "left",
+                vertical="top", wrap_text=(ci in (8, 15, 17)),
             )
-            if ci == 8:         cell.fill = grn_f
-            elif 9 <= ci <= 13: cell.fill = gld_f
-            elif ci == 17:      cell.fill = amb_f
-            elif is_alt:        cell.fill = alt_f
+            if ci == 14 and isinstance(val, datetime):
+                cell.number_format = "MMM-YYYY"
+            elif ci == 21 and isinstance(val, datetime):
+                cell.number_format = "DD-MMM-YYYY"
+            if ci == 23:            cell.fill = wht_f
+            elif ci == 8:           cell.fill = grn_f
+            elif 9 <= ci <= 13:     cell.fill = gld_f
+            elif 18 <= ci <= 20:    cell.fill = amb_f
+            elif is_alt:            cell.fill = alt_f
 
-    col_widths = [12, 14, 12, 16, 16, 18, 16, 44, 18, 18, 16, 10, 14, 10, 32, 28, 14, 13, 35]
+    col_widths = [12, 14, 12, 16, 16, 18, 16, 44, 18, 18, 16, 10, 14, 16, 40, 30, 35, 14, 14, 18, 15, 22, 14]
     for ci, w in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(ci)].width = w
     ws.freeze_panes = "A2"
@@ -155,12 +199,16 @@ def build_excel_bytes(ajustes: list[dict]) -> bytes:
 
 
 def auto_backup(ajustes: list[dict]):
+    def _serial(obj):
+        if isinstance(obj, datetime):
+            return obj.strftime("%Y-%m-%d")
+        raise TypeError(f"Not serializable: {type(obj)}")
     try:
         os.makedirs(os.path.join("exports", "backups"), exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         path = os.path.join("exports", "backups", f"backup_{ts}.json")
         with open(path, "w", encoding="utf-8") as f:
-            json.dump(ajustes, f, indent=2, ensure_ascii=False)
+            json.dump(ajustes, f, indent=2, ensure_ascii=False, default=_serial)
     except Exception:
         pass  # silently ignore on read-only filesystems (e.g. Streamlit Cloud)
 
@@ -192,25 +240,28 @@ def load_from_excel_bytes(file) -> list[dict]:
         vol = size.replace("L", "").strip() if size else ""
         product = get(row, "Full Product Path") or "General"
         loaded.append({
-            "Cycle":             get(row, "Cycle"),
-            "Area Manager":      get(row, "Area Manager"),
-            "Regional Director": get(row, "Regional Director"),
-            "Demand Planner":    get(row, "Demand Planner"),
-            "Sub-Segment":       get(row, "Sub-Segment"),
-            "Country":           get(row, "Country"),
-            "Customer":          get(row, "Customer") or "All",
-            "Category":          get(row, "Category"),
-            "Brand":             get(row, "Brand"),
-            "Sub-Brand":         get(row, "Sub-brand"),
-            "SKU":               get(row, "SKU Number"),
-            "Volume":            vol,
-            "Product":           product,
-            "Task":              task,
-            "Current Value":     get(row, "Current Value"),
-            "Reason Code":       get(row, "Reason Code"),
-            "Notes":             get(row, "Comments"),
-            "Instruction":       task,
-            "Timestamp":         get(row, "Date"),
+            "Cycle":                    get(row, "Cycle"),
+            "Area Manager":             get(row, "Area Manager"),
+            "Regional Director":        get(row, "Regional Director"),
+            "Demand Planner":           get(row, "Demand Planner"),
+            "Source of the Adjustment": get(row, "Source of the Adjustment"),
+            "Sub-Segment":              get(row, "Sub-Segment"),
+            "Country":                  get(row, "Country"),
+            "Customer":                 get(row, "Customer") or "All",
+            "Category":                 get(row, "Category"),
+            "Brand":                    get(row, "Brand"),
+            "Sub-Brand":                get(row, "Sub-brand"),
+            "SKU":                      get(row, "SKU Number"),
+            "Volume":                   vol,
+            "Product":                  product,
+            "Task":                     task,
+            "Current Value":            get(row, "Current Value"),
+            "Desired Value":            get(row, "Desired Value"),
+            "Period":                   get(row, "Period of Adjustment"),
+            "Reason Code":              get(row, "Reason Code"),
+            "Notes":                    get(row, "Comments"),
+            "Instruction":              task,
+            "Timestamp":                get(row, "Date of tracking") or get(row, "Date"),
         })
     wb.close()
     return loaded
@@ -269,11 +320,12 @@ def main():
 
     # ── SESSION FILTERS ────────────────────────────────────────────────────────
     with st.expander("⚙️ Session Filters (fixed for this meeting)", expanded=True):
-        c1, c2, c3, c4 = st.columns(4)
-        cycle          = c1.text_input("Cycle",             value="2026-05", key="f_cycle")
+        c1, c2, c3, c4, c5 = st.columns(5)
+        cycle          = c1.text_input("Cycle",             value=datetime.now().strftime("%Y-%m"), key="f_cycle")
         area_manager   = c2.text_input("Area Manager",      value="JuanMi",  key="f_am")
         regional_dir   = c3.text_input("Regional Director", value="Rafael",  key="f_rd")
         demand_planner = c4.text_input("Demand Planner",    value="Enrique", key="f_dp")
+        source         = c5.text_input("Source",            key="f_source")
 
         c5, c6 = st.columns(2)
         subseg_opts = [""] + sorted({s["Sub-Segments"] for s in skus_data})
@@ -357,38 +409,40 @@ def main():
         current_value = p3.text_input("Current Value",     key="ap_curr_inc")
 
     elif action_type == "Add or Remove Units":
-        p1, p2, p3 = st.columns(3)
-        p1.selectbox("Month (single)", [""] + months_from_cycle, key="ap_month_add")
-        p2.text_input("Units (+/-)",                               key="ap_units")
-        current_value = p3.text_input("Current Value",             key="ap_curr_add")
-
-        with st.expander("📅 Configure several months instead"):
-            st.caption("Fill Units and/or Current Value for each month you want to adjust. Leave blank to skip.")
-            cols = st.columns(3)
-            for i, month in enumerate(months_from_cycle):
-                with cols[i % 3]:
-                    st.markdown(f"**{month}**")
-                    k1 = f"sev_add_v1_{month}"; k2 = f"sev_add_v2_{month}"
-                    st.text_input("Units (+/-)",    key=k1, label_visibility="collapsed", placeholder="Units (+/-)")
-                    st.text_input("Current Value",  key=k2, label_visibility="collapsed", placeholder="Current Value")
-                    several_months_keys.append(month)
+        st.caption("Fill Units (+/-) for each month. Leave blank to skip that month.")
+        for chunk_start in range(0, len(months_from_cycle), 6):
+            chunk_months = months_from_cycle[chunk_start:chunk_start + 6]
+            hdr_cols = st.columns([1.5] + [1] * len(chunk_months))
+            hdr_cols[0].markdown("&nbsp;", unsafe_allow_html=True)
+            for i, m in enumerate(chunk_months):
+                hdr_cols[i + 1].markdown(f"**{m[:3]}**")
+            curr_cols = st.columns([1.5] + [1] * len(chunk_months))
+            curr_cols[0].markdown("Current:")
+            for i, m in enumerate(chunk_months):
+                curr_cols[i + 1].text_input("", key=f"sev_add_v2_{m}", label_visibility="collapsed", placeholder="—")
+            unit_cols = st.columns([1.5] + [1] * len(chunk_months))
+            unit_cols[0].markdown("Units (+/-):")
+            for i, m in enumerate(chunk_months):
+                unit_cols[i + 1].text_input("", key=f"sev_add_v1_{m}", label_visibility="collapsed", placeholder="—")
+        several_months_keys = list(months_from_cycle)
 
     elif action_type == "Set to exact number":
-        p1, p2, p3 = st.columns(3)
-        p1.selectbox("Month (single)", [""] + months_from_cycle, key="ap_month_set")
-        p2.text_input("Desired value",                             key="ap_desired")
-        current_value = p3.text_input("Current Value",             key="ap_curr_set")
-
-        with st.expander("📅 Configure several months instead"):
-            st.caption("Fill Desired Value and/or Current Value for each month. Leave blank to skip.")
-            cols = st.columns(3)
-            for i, month in enumerate(months_from_cycle):
-                with cols[i % 3]:
-                    st.markdown(f"**{month}**")
-                    k1 = f"sev_set_v1_{month}"; k2 = f"sev_set_v2_{month}"
-                    st.text_input("Desired Value",  key=k1, label_visibility="collapsed", placeholder="Desired Value")
-                    st.text_input("Current Value",  key=k2, label_visibility="collapsed", placeholder="Current Value")
-                    several_months_keys.append(month)
+        st.caption("Fill Desired Value for each month. Leave blank to skip that month.")
+        for chunk_start in range(0, len(months_from_cycle), 6):
+            chunk_months = months_from_cycle[chunk_start:chunk_start + 6]
+            hdr_cols = st.columns([1.5] + [1] * len(chunk_months))
+            hdr_cols[0].markdown("&nbsp;", unsafe_allow_html=True)
+            for i, m in enumerate(chunk_months):
+                hdr_cols[i + 1].markdown(f"**{m[:3]}**")
+            curr_cols = st.columns([1.5] + [1] * len(chunk_months))
+            curr_cols[0].markdown("Current:")
+            for i, m in enumerate(chunk_months):
+                curr_cols[i + 1].text_input("", key=f"sev_set_v2_{m}", label_visibility="collapsed", placeholder="—")
+            des_cols = st.columns([1.5] + [1] * len(chunk_months))
+            des_cols[0].markdown("Desired:")
+            for i, m in enumerate(chunk_months):
+                des_cols[i + 1].text_input("", key=f"sev_set_v1_{m}", label_visibility="collapsed", placeholder="—")
+        several_months_keys = list(months_from_cycle)
 
     elif action_type == "Remove from month onwards":
         p1, p2 = st.columns(2)
@@ -470,54 +524,65 @@ def main():
             notes = st.session_state.get("adj_notes_text", "") if st.session_state.get("adj_notes_toggle") else ""
 
             base = {
-                "Cycle":             cycle,
-                "Area Manager":      area_manager,
-                "Regional Director": regional_dir,
-                "Demand Planner":    demand_planner,
-                "Sub-Segment":       subseg,
-                "Country":           country,
-                "Customer":          st.session_state.get("adj_customer", "").strip() or "All",
-                "Category":          st.session_state.get("adj_category", "").strip(),
-                "Brand":             m_val,
-                "Sub-Brand":         sb_val,
-                "SKU":               sku_f,
-                "Volume":            vol_f,
-                "Product":           prod,
-                "Task":              "",
-                "Current Value":     "",
-                "Reason Code":       reason,
-                "Notes":             notes,
-                "Instruction":       "",
-                "Timestamp":         "",
+                "Cycle":                    cycle,
+                "Area Manager":             area_manager,
+                "Regional Director":        regional_dir,
+                "Demand Planner":           demand_planner,
+                "Source of the Adjustment": st.session_state.get("f_source", "").strip(),
+                "Sub-Segment":              subseg,
+                "Country":                  country,
+                "Customer":                 st.session_state.get("adj_customer", "").strip() or "All",
+                "Category":                 st.session_state.get("adj_category", "").strip(),
+                "Brand":                    m_val,
+                "Sub-Brand":                sb_val,
+                "SKU":                      sku_f,
+                "Volume":                   vol_f,
+                "Product":                  prod,
+                "Task":                     "",
+                "Current Value":            "",
+                "Desired Value":            "",
+                "Period":                   "",
+                "Reason Code":              reason,
+                "Notes":                    notes,
+                "Instruction":              "",
+                "Timestamp":                "",
             }
 
             saved = 0
             errors = []
 
-            # Multi-month: Add/Remove or Set to exact
-            if action_type in ("Add or Remove Units", "Set to exact number") and several_months_keys:
+            def _period_date(month_name):
+                try:
+                    year = int(cycle.split("-")[0])
+                    return datetime(year, MESES.index(month_name) + 1, 1).strftime("%Y-%m-%d")
+                except Exception:
+                    return month_name
+
+            # Multi-month: Add/Remove or Set to exact (always grid)
+            if action_type in ("Add or Remove Units", "Set to exact number"):
                 prefix = "sev_add" if action_type == "Add or Remove Units" else "sev_set"
-                for month in several_months_keys:
+                for month in months_from_cycle:
                     v1 = st.session_state.get(f"{prefix}_v1_{month}", "").strip()
                     v2 = st.session_state.get(f"{prefix}_v2_{month}", "").strip()
-                    if not v1 and not v2:
-                        continue
                     if not v1:
                         continue
                     a = copy.deepcopy(base)
                     a["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    a["Task"] = (
-                        f"Add/Remove {v1} units in {month}"
-                        if action_type == "Add or Remove Units"
-                        else f"Set to {v1} in {month}"
-                    )
+                    a["Period"] = _period_date(month)
+                    if action_type == "Add or Remove Units":
+                        a["Task"] = f"Add/Remove {v1} units in {month}"
+                    else:
+                        a["Task"] = f"Set to {v1} in {month}"
+                        a["Desired Value"] = v1
                     a["Current Value"] = v2
                     a["Instruction"] = a["Task"]
                     st.session_state.ajustes.append(a)
                     saved += 1
+                if saved == 0:
+                    errors.append("Please fill at least one month.")
 
             # Match figures
-            if action_type == "Match figures":
+            elif action_type == "Match figures":
                 mt = st.session_state.get("ap_match_type", "Actual Orders")
                 if mt == "Other":
                     mt = st.session_state.get("ap_match_other", "") or "Other"
@@ -527,50 +592,40 @@ def main():
                     if not curr_m and not des_m:
                         continue
                     a = copy.deepcopy(base)
-                    a["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    a["Task"] = f"Match to {mt} in {month}: desired={des_m}"
+                    a["Timestamp"]     = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    a["Period"]        = _period_date(month)
+                    a["Task"]          = f"Match to {mt} in {month}: desired={des_m}"
                     a["Current Value"] = curr_m
-                    a["Instruction"] = a["Task"]
+                    a["Desired Value"] = des_m
+                    a["Instruction"]   = a["Task"]
                     st.session_state.ajustes.append(a)
                     saved += 1
+                if saved == 0:
+                    errors.append("Please fill at least one month.")
 
             # Single-row actions
-            if action_type not in ("Match figures",) and not (
-                action_type in ("Add or Remove Units", "Set to exact number") and saved > 0
-            ):
+            else:
                 task = ""
                 curr = current_value
 
                 if action_type == "Increase/Decrease %":
-                    m  = st.session_state.get("ap_month_inc", "")
-                    p  = st.session_state.get("ap_pct", "").strip()
+                    m    = st.session_state.get("ap_month_inc", "")
+                    p    = st.session_state.get("ap_pct", "").strip()
                     curr = st.session_state.get("ap_curr_inc", "").strip()
                     task = f"Increase/Decrease {p}% in {m}" if m and p else ""
 
-                elif action_type == "Add or Remove Units":
-                    m  = st.session_state.get("ap_month_add", "")
-                    u  = st.session_state.get("ap_units", "").strip()
-                    curr = st.session_state.get("ap_curr_add", "").strip()
-                    task = f"Add/Remove {u} units in {m}" if m and u else ""
-
-                elif action_type == "Set to exact number":
-                    m  = st.session_state.get("ap_month_set", "")
-                    d  = st.session_state.get("ap_desired", "").strip()
-                    curr = st.session_state.get("ap_curr_set", "").strip()
-                    task = f"Set to {d} in {m}" if m and d else ""
-
                 elif action_type == "Remove from month onwards":
-                    m  = st.session_state.get("ap_start_month", "")
+                    m    = st.session_state.get("ap_start_month", "")
                     curr = st.session_state.get("ap_curr_rem", "").strip()
                     task = f"Remove volume from {m} onwards" if m else ""
 
                 elif action_type == "Remove particular months":
-                    sel = [mes for mes in MESES if st.session_state.get(f"ap_rm_{mes}")]
+                    sel  = [mes for mes in MESES if st.session_state.get(f"ap_rm_{mes}")]
                     curr = st.session_state.get("ap_curr_rempart", "").strip()
                     task = f"Remove volume in {', '.join(sel)}" if sel else ""
 
                 elif action_type == "Other":
-                    ct = st.session_state.get("ap_custom_text", "").strip()
+                    ct   = st.session_state.get("ap_custom_text", "").strip()
                     curr = st.session_state.get("ap_curr_other", "").strip()
                     task = (f"Other: {ct[:40]}..." if len(ct) > 40 else f"Other: {ct}") if ct else ""
 
@@ -582,7 +637,7 @@ def main():
                     a["Instruction"]   = task
                     st.session_state.ajustes.append(a)
                     saved += 1
-                elif saved == 0:
+                else:
                     errors.append("Please complete the action parameters.")
 
             if saved > 0:
