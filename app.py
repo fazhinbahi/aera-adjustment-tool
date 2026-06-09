@@ -47,10 +47,15 @@ ACTION_TYPES = [
 
 def get_months_from_cycle(cycle: str) -> list[str]:
     try:
-        m = int(cycle.split("-")[1])
+        parts = cycle.split("-")
+        year = int(parts[0])
+        m = int(parts[1])
     except Exception:
-        m = 0
-    return MESES[m:]
+        year = datetime.now().year
+        m = 1
+    current_year = [f"{MESES[i]} {year}"     for i in range(m - 1, 12)]
+    next_year    = [f"{MESES[i]} {year + 1}" for i in range(12)]
+    return current_year + next_year
 
 
 def load_skus_data(data: dict) -> list[dict]:
@@ -135,10 +140,14 @@ def build_excel_bytes(ajustes: list[dict]) -> bytes:
                 period_date = datetime.strptime(period_str, "%Y-%m-%d")
             except Exception:
                 try:
-                    year = int(a.get("Cycle", "2026-01").split("-")[0])
-                    period_date = datetime(year, MESES.index(period_str) + 1, 1)
+                    parts = period_str.split(" ")
+                    period_date = datetime(int(parts[1]), MESES.index(parts[0]) + 1, 1)
                 except Exception:
-                    period_date = period_str
+                    try:
+                        year = int(a.get("Cycle", "2026-01").split("-")[0])
+                        period_date = datetime(year, MESES.index(period_str) + 1, 1)
+                    except Exception:
+                        period_date = period_str
 
         # Current / Desired / Delta
         curr_str = str(a.get("Current Value", "")).strip()
@@ -415,7 +424,7 @@ def main():
             hdr_cols = st.columns([1.5] + [1] * len(chunk_months))
             hdr_cols[0].markdown("&nbsp;", unsafe_allow_html=True)
             for i, m in enumerate(chunk_months):
-                hdr_cols[i + 1].markdown(f"**{m[:3]}**")
+                hdr_cols[i + 1].markdown(f"**{m[:3]} {m.split()[-1][2:]}**")
             curr_cols = st.columns([1.5] + [1] * len(chunk_months))
             curr_cols[0].markdown("Current:")
             for i, m in enumerate(chunk_months):
@@ -433,7 +442,7 @@ def main():
             hdr_cols = st.columns([1.5] + [1] * len(chunk_months))
             hdr_cols[0].markdown("&nbsp;", unsafe_allow_html=True)
             for i, m in enumerate(chunk_months):
-                hdr_cols[i + 1].markdown(f"**{m[:3]}**")
+                hdr_cols[i + 1].markdown(f"**{m[:3]} {m.split()[-1][2:]}**")
             curr_cols = st.columns([1.5] + [1] * len(chunk_months))
             curr_cols[0].markdown("Current:")
             for i, m in enumerate(chunk_months):
@@ -551,12 +560,12 @@ def main():
             saved = 0
             errors = []
 
-            def _period_date(month_name):
+            def _period_date(month_label):
                 try:
-                    year = int(cycle.split("-")[0])
-                    return datetime(year, MESES.index(month_name) + 1, 1).strftime("%Y-%m-%d")
+                    parts = month_label.split(" ")
+                    return datetime(int(parts[1]), MESES.index(parts[0]) + 1, 1).strftime("%Y-%m-%d")
                 except Exception:
-                    return month_name
+                    return month_label
 
             # Multi-month: Add/Remove or Set to exact (always grid)
             if action_type in ("Add or Remove Units", "Set to exact number"):
