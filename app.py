@@ -285,13 +285,54 @@ def load_from_excel_bytes(file) -> list[dict]:
 
 def init_state():
     defaults = {
-        "ajustes":      [],
-        "skus_data":    [],
-        "data_loaded":  False,
+        "ajustes":       [],
+        "skus_data":     [],
+        "data_loaded":   False,
+        "field_history": {},
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+
+def _record_history(key: str, value: str):
+    """Save a non-empty value to per-field autocomplete history."""
+    value = (value or "").strip()
+    if not value:
+        return
+    hist = st.session_state.field_history.setdefault(key, [])
+    if value not in hist:
+        hist.append(value)
+
+
+def _autocomplete(label: str, key: str, container=None, **kwargs):
+    """text_input with a live suggestion dropdown drawn from field history."""
+    # Apply any pending suggestion before the widget is rendered
+    pending = f"_ac_pending_{key}"
+    if pending in st.session_state:
+        st.session_state[key] = st.session_state.pop(pending)
+
+    host = container if container is not None else st
+    val = host.text_input(label, key=key, **kwargs)
+
+    typed = (val or "").strip().lower()
+    hist = st.session_state.field_history.get(key, [])
+    if hist:
+        if typed:
+            matches = [h for h in hist if h.lower().startswith(typed) and h != val]
+        else:
+            matches = [h for h in hist if h != val]
+        if matches:
+            chosen = host.selectbox(
+                "", [""] + matches,
+                key=f"_ac_sel_{key}",
+                label_visibility="collapsed",
+            )
+            if chosen:
+                st.session_state[pending] = chosen
+                st.rerun()
+
+    return val
 
 # ─── Main app ─────────────────────────────────────────────────────────────────
 
@@ -339,7 +380,7 @@ def main():
         area_manager   = c2.text_input("Area Manager",      value="JuanMi",  key="f_am")
         regional_dir   = c3.text_input("Regional Director", value="Rafael",  key="f_rd")
         demand_planner = c4.text_input("Demand Planner",    value="Enrique", key="f_dp")
-        source         = c5.text_input("Source",            key="f_source")
+        source         = _autocomplete("Source", "f_source", container=c5)
 
         c5, c6 = st.columns(2)
         subseg_opts = [""] + sorted({s["Sub-Segments"] for s in skus_data})
@@ -356,8 +397,8 @@ def main():
     st.subheader("New Adjustment")
 
     ca, cb = st.columns(2)
-    category = ca.text_input("Category (optional)", key="adj_category")
-    customer = cb.text_input('Customer (optional — blank = "All")', key="adj_customer")
+    category = _autocomplete("Category (optional)", "adj_category", container=ca)
+    customer = _autocomplete('Customer (optional — blank = "All")', "adj_customer", container=cb)
 
     not_in_catalog = st.checkbox("Product not in catalog (manual entry)", key="adj_nic")
 
@@ -660,6 +701,9 @@ def main():
                     errors.append("Please complete the action parameters.")
 
             if saved > 0:
+                _record_history("adj_category", st.session_state.get("adj_category", ""))
+                _record_history("adj_customer",  st.session_state.get("adj_customer",  ""))
+                _record_history("f_source",      st.session_state.get("f_source",      ""))
                 auto_backup(st.session_state.ajustes)
                 st.success(f"{saved} adjustment(s) saved!")
                 st.rerun()
