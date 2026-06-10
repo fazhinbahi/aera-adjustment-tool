@@ -150,8 +150,9 @@ def build_excel_bytes(ajustes: list[dict]) -> bytes:
                         period_date = period_str
 
         # Current / Desired / Delta
-        curr_str = str(a.get("Current Value", "")).strip()
-        des_str  = str(a.get("Desired Value", "")).strip()
+        curr_str  = str(a.get("Current Value", "")).strip()
+        des_str   = str(a.get("Desired Value", "")).strip()
+        delta_str = str(a.get("Delta", "")).strip()
         try:
             curr_num = float(curr_str)
             des_num  = float(des_str)
@@ -159,7 +160,11 @@ def build_excel_bytes(ajustes: list[dict]) -> bytes:
             curr_out = int(curr_num) if curr_num == int(curr_num) else curr_num
             des_out  = int(des_num)  if des_num  == int(des_num)  else des_num
         except Exception:
-            delta = ""; curr_out = curr_str; des_out = des_str
+            curr_out = curr_str; des_out = des_str
+            try:
+                delta = int(float(delta_str)) if delta_str else ""
+            except Exception:
+                delta = delta_str if delta_str else ""
 
         # Date of tracking
         ts_str = a.get("Timestamp", "")
@@ -580,6 +585,11 @@ def main():
                     a["Period"] = _period_date(month)
                     if action_type == "Add or Remove Units":
                         a["Task"] = f"Add/Remove {v1} units in {month}"
+                        a["Delta"] = v1
+                        try:
+                            a["Desired Value"] = str(int(float(v2) + float(v1))) if v2 else ""
+                        except Exception:
+                            a["Desired Value"] = ""
                     else:
                         a["Task"] = f"Set to {v1} in {month}"
                         a["Desired Value"] = v1
